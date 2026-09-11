@@ -1,10 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 import '../config/premium_theme.dart';
 import 'premium_image.dart';
 
-/// Full-bleed dashboard hero that carries text over photography.
+/// Full-bleed dashboard hero that carries the greeting over photography.
+///
+/// **This is a static header, not a sliver.** It is a plain box, so the
+/// dashboard can lay it out *above* its scroll view. The greeting therefore
+/// stays pinned to the top of the screen while only the content below it
+/// scrolls. Do not put it in `CustomScrollView.slivers` — it would scroll
+/// away again.
+///
+/// Because there is no [SliverAppBar] to derive the system chrome from, the
+/// widget sets [SystemUiOverlayStyle.light] itself: the hero is dark, so the
+/// status-bar glyphs must stay light.
 ///
 /// Contrast is guaranteed by three cooperating layers rather than by luck:
 ///   1. [Lux.heroScrim] — a dense band across the top where the greeting
@@ -32,7 +43,8 @@ class PremiumHeroHeader extends StatelessWidget {
   /// Optional trailing widget (notifications).
   final Widget? trailing;
 
-  /// Expanded height of the app bar.
+  /// Total height of the header, *including* the status-bar inset — the
+  /// imagery runs behind the status bar, the text does not.
   final double height;
 
   /// Extra bottom padding, e.g. to clear a floating element.
@@ -62,37 +74,37 @@ class PremiumHeroHeader extends StatelessWidget {
       );
 
   static TextStyle subtitleStyle() => GoogleFonts.inter(
-        fontSize: 13.5,
-        fontWeight: FontWeight.w500,
-        height: 1.3,
-        color: Colors.white.withValues(alpha: 0.92),
-        shadows: const [
-          Shadow(color: Color(0x99000000), blurRadius: 10, offset: Offset(0, 1)),
-        ],
-      );
+    fontSize: 13.5,
+    fontWeight: FontWeight.w500,
+    height: 1.3,
+    color: Colors.white.withValues(alpha: 0.92),
+    shadows: const [
+      Shadow(color: Color(0x99000000), blurRadius: 10, offset: Offset(0, 1)),
+    ],
+  );
 
   static TextStyle eyebrowStyle() => GoogleFonts.inter(
-        fontSize: 10.5,
-        fontWeight: FontWeight.w700,
-        letterSpacing: 2.6,
-        color: Lux.goldBright,
-        shadows: const [
-          Shadow(color: Color(0xCC000000), blurRadius: 8, offset: Offset(0, 1)),
-        ],
-      );
+    fontSize: 10.5,
+    fontWeight: FontWeight.w700,
+    letterSpacing: 2.6,
+    color: Lux.goldBright,
+    shadows: const [
+      Shadow(color: Color(0xCC000000), blurRadius: 8, offset: Offset(0, 1)),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
-    return SliverAppBar(
-      expandedHeight: height,
-      floating: true,
-      pinned: false,
-      stretch: true,
-      backgroundColor: Lux.ink,
-      surfaceTintColor: Colors.transparent,
-      flexibleSpace: FlexibleSpaceBar(
-        stretchModes: const [StretchMode.zoomBackground],
-        background: Stack(
+    // The body of a Scaffold without an app bar starts at the top of the
+    // screen, so the artwork can sit behind the status bar while the text
+    // is inset past it — exactly what the old SliverAppBar did.
+    final topInset = MediaQuery.paddingOf(context).top;
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: SizedBox(
+        height: height,
+        child: Stack(
           fit: StackFit.expand,
           children: [
             if (imageUrl == null)
@@ -125,7 +137,8 @@ class PremiumHeroHeader extends StatelessWidget {
                   ),
                 ),
               ),
-            SafeArea(
+            Padding(
+              padding: EdgeInsets.only(top: topInset),
               child: Padding(
                 padding: EdgeInsets.fromLTRB(20, 14, 20, bottomPadding),
                 child: Column(

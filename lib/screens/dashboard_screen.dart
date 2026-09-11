@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -26,6 +28,11 @@ import 'trip_search_screen.dart';
 /// Home shell: hero header, metallic wallet, quick actions, stats,
 /// upcoming trips and recent bookings, with a four-tab bottom bar.
 ///
+/// The hero header is **static**: it sits in a [Column] above the scroll
+/// view rather than inside it, so the greeting stays pinned to the top of
+/// the screen and only the content below it scrolls. Keeping it out of the
+/// sliver list also means the header and the content can never overlap.
+///
 /// Hardened against blank screens:
 /// - an explicit background is painted before anything loads;
 /// - the shell (header + wallet + quick actions) is static data and
@@ -40,6 +47,10 @@ class DashboardScreen extends StatefulWidget {
 }
 
 class _DashboardScreenState extends State<DashboardScreen> {
+  /// Preferred hero height at rest. Clamped down on short viewports so a
+  /// permanently-pinned header can never crowd out the content.
+  static const double _heroHeight = 244;
+
   int _tab = 0;
   bool _loading = true;
   String? _loadError;
@@ -165,179 +176,224 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final catalogFailed = _loadError != null && booking.locations.isEmpty;
     final isPhone = Breakpoints.isPhone(context);
 
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          if (_loading)
-            const SliverToBoxAdapter(
-              child: LinearProgressIndicator(
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The hero is pinned, so it permanently occupies vertical space.
+        // Cap it on short viewports (landscape phones, small windows) so
+        // it can never crowd out — or overflow — the content beneath.
+        final available = constraints.maxHeight;
+        final heroHeight = available.isFinite
+            ? math.min(_heroHeight, available * 0.45)
+            : _heroHeight;
+
+        return Column(
+          children: [
+            // ── Static header: never scrolls, never overlaps ────────
+            _heroHeader(context, user, unread, height: heroHeight),
+            if (_loading)
+              const LinearProgressIndicator(
                 key: Key('dashboard_loading_indicator'),
                 minHeight: 2.5,
               ),
-            ),
-          if (!online) const SliverToBoxAdapter(child: OfflineBar()),
-          _heroHeader(context, user, unread),
-          SliverToBoxAdapter(
-            child: ContentShell(
-              maxWidth: isPhone ? 720 : 900,
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _WalletCard(
-                    user: user,
-                    onTopUp: () =>
-                        Navigator.of(context).pushNamed(AppConstants.routeWallet),
-                  ),
-                  const SizedBox(height: 26),
-                  _QuickActions(
-                    onSearch: () => setState(() => _tab = 1),
-                    onBookings: () => setState(() => _tab = 2),
-                    onWallet: () =>
-                        Navigator.of(context).pushNamed(AppConstants.routeWallet),
-                    onProfile: () => setState(() => _tab = 3),
-                  ),
-                  const SizedBox(height: 26),
-                  Row(
-                    children: [
-                      _StatTile(
-                        value: '${booking.allTrips.length}',
-                        label: 'Trips found',
-                        icon: Icons.route_rounded,
-                        onTap: () => Navigator.of(context)
-                            .pushNamed(AppConstants.routeAnalytics),
-                      ),
-                      const SizedBox(width: 12),
-                      _StatTile(
-                        value: '${booking.recentBookings.length}',
-                        label: 'Bookings',
-                        icon: Icons.confirmation_number_outlined,
-                        onTap: () => setState(() => _tab = 2),
-                      ),
-                      const SizedBox(width: 12),
-                      _StatTile(
-                        value: Formatters.currency(user?.balance ?? 0,
-                            withDecimals: false),
-                        label: 'Balance',
-                        icon: Icons.savings_outlined,
-                        onTap: () => Navigator.of(context)
-                            .pushNamed(AppConstants.routeWallet),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-                  // API error → friendly message + retry (full view when
-                  // nothing could be loaded, slim banner when cached data
-                  // keeps the dashboard usable).
-                  if (catalogFailed)
-                    AppErrorView(
-                      key: const Key('dashboard_error_view'),
-                      message: _loadError!,
-                      onRetry: _load,
-                    )
-                  else if (_loadError != null)
-                    _errorBanner(),
-                  SectionHeader(
-                    eyebrowText: 'Your journeys',
-                    title: 'Upcoming trips',
-                    actionLabel: 'Search',
-                    onAction: () =>
-                        Navigator.of(context).pushNamed(AppConstants.routeSearch),
-                  ),
-                  const SizedBox(height: 14),
-                  if (booking.catalogLoading && booking.upcomingTrips.isEmpty)
-                    const TripCardSkeleton()
-                  else if (catalogFailed)
-                    const SizedBox.shrink()
-                  else if (booking.upcomingTrips.isEmpty)
-                    _emptyTrips()
-                  else
-                    ...booking.upcomingTrips.asMap().entries.map((entry) {
-                      final index = entry.key;
-                      final t = entry.value;
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 14),
-                        child: HoverLift(
-                          child: Hero(
-                            // Unique per position so repeated/empty
-                            // masterIds from the API can't duplicate
-                            // Hero tags.
-                            tag: 'dashboard-trip-$index-${t.masterId}',
-                            child: TripCard(
-                              trip: t,
-                              onSelect: () {
-                                context.read<BookingProvider>().selectTrip(t);
-                                Navigator.of(context).pushNamed(
-                                  AppConstants.routeSeatSelection,
+            if (!online) const OfflineBar(),
+            // ── Only the content below this point scrolls ───────────
+            Expanded(
+              child: RefreshIndicator(
+                onRefresh: _refresh,
+                child: CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    SliverToBoxAdapter(
+                      child: ContentShell(
+                        maxWidth: isPhone ? 720 : 900,
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            _WalletCard(
+                              user: user,
+                              onTopUp: () =>
+                                  Navigator.of(context)
+                                      .pushNamed(AppConstants.routeWallet),
+                            ),
+                            const SizedBox(height: 26),
+                            _QuickActions(
+                              onSearch: () => setState(() => _tab = 1),
+                              onBookings: () => setState(() => _tab = 2),
+                              onWallet: () =>
+                                  Navigator.of(context)
+                                      .pushNamed(AppConstants.routeWallet),
+                              onProfile: () => setState(() => _tab = 3),
+                            ),
+                            const SizedBox(height: 26),
+                            Row(
+                              children: [
+                                _StatTile(
+                                  value: '${booking.allTrips.length}',
+                                  label: 'Trips found',
+                                  icon: Icons.route_rounded,
+                                  onTap: () => Navigator.of(context)
+                                      .pushNamed(AppConstants.routeAnalytics),
+                                ),
+                                const SizedBox(width: 12),
+                                _StatTile(
+                                  value: '${booking.recentBookings.length}',
+                                  label: 'Bookings',
+                                  icon: Icons.confirmation_number_outlined,
+                                  onTap: () => setState(() => _tab = 2),
+                                ),
+                                const SizedBox(width: 12),
+                                _StatTile(
+                                  value: Formatters.currency(
+                                    user?.balance ?? 0,
+                                    withDecimals: false,
+                                  ),
+                                  label: 'Balance',
+                                  icon: Icons.savings_outlined,
+                                  onTap: () =>
+                                      Navigator.of(context)
+                                          .pushNamed(AppConstants.routeWallet),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 28),
+                            // API error → friendly message + retry (full view when
+                            // nothing could be loaded, slim banner when cached data
+                            // keeps the dashboard usable).
+                            if (catalogFailed)
+                              AppErrorView(
+                                key: const Key('dashboard_error_view'),
+                                message: _loadError!,
+                                onRetry: _load,
+                              )
+                            else if (_loadError != null)
+                              _errorBanner(),
+                            SectionHeader(
+                              eyebrowText: 'Your journeys',
+                              title: 'Upcoming trips',
+                              actionLabel: 'Search',
+                              onAction: () =>
+                                  Navigator.of(context)
+                                      .pushNamed(AppConstants.routeSearch),
+                            ),
+                            const SizedBox(height: 14),
+                            if (booking.catalogLoading &&
+                                booking.upcomingTrips.isEmpty)
+                              const TripCardSkeleton()
+                            else if (catalogFailed)
+                              const SizedBox.shrink()
+                            else if (booking.upcomingTrips.isEmpty)
+                              _emptyTrips()
+                            else
+                              ...booking.upcomingTrips.asMap().entries.map((
+                                entry,
+                              ) {
+                                final index = entry.key;
+                                final t = entry.value;
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 14),
+                                  child: HoverLift(
+                                    child: Hero(
+                                      // Unique per position so repeated/empty
+                                      // masterIds from the API can't duplicate
+                                      // Hero tags.
+                                      tag:
+                                          'dashboard-trip-$index-${t.masterId}',
+                                      child: TripCard(
+                                        trip: t,
+                                        onSelect: () {
+                                          context
+                                              .read<BookingProvider>()
+                                              .selectTrip(t);
+                                          Navigator.of(context).pushNamed(
+                                            AppConstants.routeSeatSelection,
+                                          );
+                                        },
+                                      ),
+                                    ),
+                                  ),
                                 );
-                              },
+                              }),
+                            const SizedBox(height: 20),
+                            SectionHeader(
+                              eyebrowText: 'Activity',
+                              title: 'Recent bookings',
+                              actionLabel: 'See all',
+                              onAction: () => setState(() => _tab = 2),
                             ),
-                          ),
-                        ),
-                      );
-                    }),
-                  const SizedBox(height: 20),
-                  SectionHeader(
-                    eyebrowText: 'Activity',
-                    title: 'Recent bookings',
-                    actionLabel: 'See all',
-                    onAction: () => setState(() => _tab = 2),
-                  ),
-                  const SizedBox(height: 14),
-                  if (booking.recentBookings.isEmpty)
-                    PremiumCard(
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 42,
-                            height: 42,
-                            decoration: BoxDecoration(
-                              color: Lux.gold.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(13),
-                            ),
-                            child: const Icon(Icons.history_rounded,
-                                size: 20, color: Lux.goldDeep),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Text(
-                              'No bookings yet — search a trip to get started.',
-                              style: Lux.body(context, size: 13.5),
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    PremiumCard(
-                      padding: EdgeInsets.zero,
-                      child: Column(
-                        children: [
-                          for (var i = 0;
-                              i < booking.recentBookings.take(5).length;
-                              i++) ...[
-                            if (i > 0) const Divider(height: 1, indent: 66),
-                            _recentRow(booking.recentBookings[i]),
+                            const SizedBox(height: 14),
+                            if (booking.recentBookings.isEmpty)
+                              PremiumCard(
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 42,
+                                      height: 42,
+                                      decoration: BoxDecoration(
+                                        color: Lux.gold.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(13),
+                                      ),
+                                      child: const Icon(
+                                        Icons.history_rounded,
+                                        size: 20,
+                                        color: Lux.goldDeep,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 14),
+                                    Expanded(
+                                      child: Text(
+                                        'No bookings yet — search a trip to get started.',
+                                        style: Lux.body(context, size: 13.5),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              )
+                            else
+                              PremiumCard(
+                                padding: EdgeInsets.zero,
+                                child: Column(
+                                  children: [
+                                    for (
+                                      var i = 0;
+                                      i < booking.recentBookings.take(5).length;
+                                      i++
+                                    ) ...[
+                                      if (i > 0)
+                                        const Divider(height: 1, indent: 66),
+                                      _recentRow(booking.recentBookings[i]),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            const SizedBox(height: 20),
                           ],
-                        ],
+                        ),
                       ),
                     ),
-                  const SizedBox(height: 20),
-                ],
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
-      ),
+          ],
+        );
+      },
     );
   }
 
   // ── Hero header ────────────────────────────────────────────────
 
-  Widget _heroHeader(BuildContext context, User? user, int unread) {
+  /// The pinned hero. It is laid out *above* the scroll view, never inside
+  /// it, which is what keeps the greeting on screen while content scrolls.
+  Widget _heroHeader(
+    BuildContext context,
+    User? user,
+    int unread, {
+    required double height,
+  }) {
     return PremiumHeroHeader(
+      key: const Key('dashboard_hero_header'),
+      height: height,
       greeting: 'Hello, ${_firstName(user)}',
       subtitle: 'Where shall we take you today?',
       eyebrow: 'MEMBERS TRAVEL',
@@ -404,16 +460,21 @@ class _DashboardScreenState extends State<DashboardScreen> {
           color: Lux.gold.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(12),
         ),
-        child: const Icon(Icons.confirmation_number_rounded,
-            size: 19, color: Lux.goldDeep),
+        child: const Icon(
+          Icons.confirmation_number_rounded,
+          size: 19,
+          color: Lux.goldDeep,
+        ),
       ),
-      title: Text('Seat ${b.seatNumber}', style: Lux.title(context, size: 14.5)),
-      subtitle: Text(Formatters.date(b.bookedAt),
-          style: Lux.caption(context, size: 12)),
-      trailing: Text(
-        b.paymentReference,
-        style: Lux.caption(context, size: 11),
+      title: Text(
+        'Seat ${b.seatNumber}',
+        style: Lux.title(context, size: 14.5),
       ),
+      subtitle: Text(
+        Formatters.date(b.bookedAt),
+        style: Lux.caption(context, size: 12),
+      ),
+      trailing: Text(b.paymentReference, style: Lux.caption(context, size: 11)),
     );
   }
 
@@ -472,12 +533,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
               color: Lux.gold.withValues(alpha: 0.1),
               border: Border.all(color: Lux.gold.withValues(alpha: 0.35)),
             ),
-            child: const Icon(Icons.route_outlined,
-                size: 28, color: Lux.goldDeep),
+            child: const Icon(
+              Icons.route_outlined,
+              size: 28,
+              color: Lux.goldDeep,
+            ),
           ),
           const SizedBox(height: 16),
-          Text('No journeys on the horizon',
-              style: Lux.headline(context, size: 18)),
+          Text(
+            'No journeys on the horizon',
+            style: Lux.headline(context, size: 18),
+          ),
           const SizedBox(height: 6),
           Text(
             'Run a search to see available departures and fares.',
@@ -518,8 +584,11 @@ class _WalletCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              const Icon(Icons.account_balance_wallet_outlined,
-                  size: 17, color: Lux.goldBright),
+              const Icon(
+                Icons.account_balance_wallet_outlined,
+                size: 17,
+                color: Lux.goldBright,
+              ),
               const SizedBox(width: 8),
               Text(
                 'Wallet balance',
@@ -709,9 +778,7 @@ class _ActionTile extends StatelessWidget {
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                     ),
-                    border: Border.all(
-                      color: Lux.gold.withValues(alpha: 0.3),
-                    ),
+                    border: Border.all(color: Lux.gold.withValues(alpha: 0.3)),
                   ),
                   child: Icon(icon, size: 19, color: Lux.goldDeep),
                 ),
@@ -720,8 +787,10 @@ class _ActionTile extends StatelessWidget {
                   label,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: Lux.caption(context, size: 11.5)
-                      .copyWith(fontWeight: FontWeight.w600),
+                  style: Lux.caption(
+                    context,
+                    size: 11.5,
+                  ).copyWith(fontWeight: FontWeight.w600),
                 ),
               ],
             ),
