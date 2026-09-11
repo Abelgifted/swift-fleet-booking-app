@@ -1,0 +1,53 @@
+# Render blueprint — one-click deploy of the Swift Fleet web app.
+#
+# Creates a single Web Service that serves the compiled Flutter bundle AND
+# proxies /api/* to the fleet backend, so the whole app lives on one URL.
+#
+# Deploy: Render Dashboard → New → Blueprint → pick this repository.
+#
+# NOTE: the default build below compiles Flutter on Render. It needs ~2 GB of
+# RAM, so on the free tier (512 MB) it can be killed mid-build. If that
+# happens, switch to the prebuilt variant at the bottom of this file.
+
+services:
+  - type: web
+    name: swift-fleet
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    autoDeploy: true
+    # The service root is the repository root so the build step can reach
+    # both pubspec.yaml (Flutter) and swift-fleet-api/ (the server).
+    buildCommand: npm install --omit=dev
+    startCommand: node swift-fleet-api/server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22.22.2"
+      # Pin the Flutter SDK once you know a good release, e.g. "3.24.5".
+      # "stable" always tracks the latest, which can break unexpectedly.
+      - key: FLUTTER_VERSION
+        value: stable
+      # Store credentials. `sync: false` means Render prompts for the value
+      # instead of storing it in this file. The server falls back to the
+      # built-in defaults when these are unset.
+      - key: API_KEY
+        sync: false
+      - key: STORE_ID
+        value: bentalsupermarket
+      - key: UPSTREAM_HOST
+        value: ecomapi.swift.ng
+
+# ─────────────────────────────────────────────────────────────────────────
+# VARIANT B — prebuilt (fast + reliable on the free tier)
+#
+# Build the bundle locally, commit swift-fleet-api/public/, then replace the
+# two command lines above with:
+#
+#     buildCommand: npm install --omit=dev
+#     startCommand: node swift-fleet-api/server.js
+#
+# and delete the FLUTTER_VERSION env var. The build then takes seconds
+# instead of minutes. See DEPLOY.md → "Option B".
+# ─────────────────────────────────────────────────────────────────────────

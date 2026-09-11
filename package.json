@@ -1,0 +1,15 @@
+{
+  "name": "swift-fleet",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deployment wrapper for the Swift Fleet Flutter web app. The real server lives in swift-fleet-api/.",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node swift-fleet-api/server.js",
+    "build:web": "node swift-fleet-api/scripts/build-web.js",
+    "render:build": "bash scripts/render-build.sh"
+  },
+  "dependencies": {}
+}

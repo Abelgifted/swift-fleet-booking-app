@@ -1,0 +1,25 @@
+{
+  "name": "swift-fleet-server",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Single-service host for the Swift Fleet Flutter web app: serves the compiled bundle and proxies /api/* to the fleet backend with CORS and API-key injection.",
+  "main": "server.js",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "build:web": "node scripts/build-web.js",
+    "build:web:clean": "node scripts/build-web.js --clean-only",
+    "health": "node -e \"fetch('http://localhost:'+(process.env.PORT||8787)+'/health').then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))\""
+  },
+  "keywords": [
+    "flutter",
+    "fleet",
+    "proxy",
+    "render"
+  ],
+  "license": "UNLICENSED",
+  "dependencies": {}
+}
