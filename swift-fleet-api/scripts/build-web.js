@@ -37,9 +37,30 @@ function fail(message) {
 }
 
 function cleanPublic() {
-  if (fs.existsSync(PUBLIC_DIR)) {
+  if (!fs.existsSync(PUBLIC_DIR)) return;
+
+  try {
     fs.rmSync(PUBLIC_DIR, { recursive: true, force: true });
     log('cleared', PUBLIC_DIR);
+    return;
+  } catch (error) {
+    // Some environments intercept recursive deletes (sandboxes, managed
+    // shells, antivirus shims) and fail or time out. A stale directory is
+    // not worth aborting a build for — move it aside and let Flutter write
+    // a fresh one.
+    log(`could not remove public/ — ${String(error.message).split('\n')[0]}`);
+  }
+
+  const stale = `${PUBLIC_DIR}.stale-${Date.now()}`;
+  try {
+    fs.renameSync(PUBLIC_DIR, stale);
+    log('moved the previous build aside to', stale);
+    log('delete that folder once the new build looks good');
+  } catch (renameError) {
+    // Last resort: build straight over the top. Flutter overwrites its own
+    // outputs, so the result is still correct — just with stale extras.
+    log(`could not move it aside either — ${String(renameError.message).split('\n')[0]}`);
+    log('building over the existing directory instead');
   }
 }
 

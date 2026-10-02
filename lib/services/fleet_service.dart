@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show debugPrint, kDebugMode;
+
 import '../models/booking.dart';
 import '../models/location.dart';
 import '../models/payment.dart';
@@ -62,10 +64,13 @@ class FleetService {
 
   /// GET /trips/search (fallback: /trips) with origin/destination/date.
   ///
-  /// The verified upstream contract is `source`/`destination`/`date`, and it
-  /// accepts either the location **Id** or the location **Name** for
-  /// `source`/`destination`. Extra capitalised aliases are sent too so older
-  /// backend builds keep working; the upstream ignores unknown parameters.
+  /// The backend contract is `source`/`destination`/`date` (lower-case only,
+  /// per the API docs). The upstream resolves a route by the location **Name**
+  /// (e.g. `Abuja`, `Jos`) — sending the location **Id** (GUID) makes it
+  /// answer *"No route found for the selected locations"* even though
+  /// `/trips/routes` lists the very same pair. So the trimmed Name is the
+  /// primary value; the Id is only a last-resort fallback for callers that
+  /// have no name (names arrive with stray whitespace, e.g. `"Jos "`).
   Future<SearchOutcome> searchTrips({
     String? sourceId,
     String? sourceName,
@@ -74,27 +79,28 @@ class FleetService {
     String? date, // yyyy-MM-dd
     String? authToken,
   }) async {
+    final srcName = sourceName?.trim() ?? '';
+    final dstName = destinationName?.trim() ?? '';
+
+    final source = srcName.isNotEmpty
+        ? srcName
+        : (sourceId != null && sourceId.isNotEmpty ? sourceId : '');
+    final destination = dstName.isNotEmpty
+        ? dstName
+        : (destinationId != null && destinationId.isNotEmpty
+            ? destinationId
+            : '');
+
+    if (kDebugMode) {
+      debugPrint(
+          '→ trip search params: source="$source" destination="$destination"');
+    }
+
     final query = <String, dynamic>{
-      // The upstream resolves `source`/`destination`; prefer the Id when we
-      // have one, otherwise fall back to the human-readable name.
-      if (sourceId != null && sourceId.isNotEmpty) 'source': sourceId,
-      if (sourceName != null && sourceName.isNotEmpty) ...{
-        if (sourceId == null || sourceId.isEmpty) 'source': sourceName,
-        'Source': sourceName,
-      },
-      if (destinationId != null && destinationId.isNotEmpty)
-        'destination': destinationId,
-      if (destinationName != null && destinationName.isNotEmpty) ...{
-        if (destinationId == null || destinationId.isEmpty)
-          'destination': destinationName,
-        'Destination': destinationName,
-      },
-      if (date != null && date.isNotEmpty) ...{
-        'date': date,
-        'Date': date,
-        'departureDate': date,
-        'DepartureDate': date,
-      },
+      // Names win over Ids — see the doc comment above.
+      if (source.isNotEmpty) 'source': source,
+      if (destination.isNotEmpty) 'destination': destination,
+      if (date != null && date.isNotEmpty) 'date': date,
     };
 
     final envelope = await _getEnvelope(

@@ -61,7 +61,21 @@ class ApiService {
         options.queryParameters = ApiConfig.addDefaultQueryParams(
           options.queryParameters,
         );
+        if (debugLogging) {
+          debugPrint('→ ${options.method} ${options.uri}');
+          debugPrint('  headers: ${options.headers.map((key, value) => MapEntry(
+                key,
+                value is String ? _redact(key, value) : value,
+              ))}');
+        }
         handler.next(options);
+      },
+      onResponse: (response, handler) {
+        if (debugLogging) {
+          debugPrint(
+              '← ${response.statusCode} ${response.requestOptions.uri}');
+        }
+        handler.next(response);
       },
       onError: (error, handler) => handler.next(error),
     ));

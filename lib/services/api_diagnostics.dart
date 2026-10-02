@@ -76,8 +76,10 @@ class ApiDiagnostics {
           : 'Trip search',
       path: AppConstants.epTripsSearch,
       query: {
-        if (from != null) 'source': from.id,
-        if (to != null) 'destination': to.id,
+        // Match the real search: the upstream resolves routes by location
+        // Name, so the probe must send names (trimmed) rather than GUIDs.
+        if (from != null) 'source': from.name.trim(),
+        if (to != null) 'destination': to.name.trim(),
         'date': DateTime.now().toIso8601String().substring(0, 10),
       },
       countRows: _countTrips,

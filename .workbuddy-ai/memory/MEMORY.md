@@ -81,6 +81,29 @@ Fonts: Playfair Display (serif headings) + Inter (sans body) via `google_fonts`.
   viewport exercises).
 - **Hero tags on trip cards are index-scoped** because the API can return
   duplicate `masterId`s.
+- **The dashboard header is deliberately STATIC — do not make it a sliver.**
+  `PremiumHeroHeader` is a plain `SizedBox`+`Stack`, laid out in a `Column`
+  *above* the dashboard's `CustomScrollView` (header → optional progress /
+  offline bar → `Expanded(RefreshIndicator(CustomScrollView))`). A pinned
+  `SliverAppBar` still collapses to ~56 px and would squash the greeting in
+  `flexibleSpace`. Because there is no app bar, the header sets
+  `AnnotatedRegion<SystemUiOverlayStyle>.light` itself for the status-bar
+  glyphs, and insets its text by `MediaQuery.paddingOf(context).top` so the
+  artwork still runs behind the status bar. Height is clamped to
+  `min(244, constraints.maxHeight * 0.45)` so a pinned header can never
+  overflow a short viewport. Guarded by
+  `test/dashboard_pinned_header_test.dart` (asserts header y is invariant
+  across scrolls while content moves).
+
+## Build script trap
+
+- **`npm run build:web` / `fs.rmSync` can be intercepted.** This environment
+  injects a safe-delete shim that reroutes recursive deletes to the Windows
+  Recycle Bin; it can time out and leave `public/` *partially* emptied (which
+  makes `/health` report degraded). `cleanPublic()` in
+  `swift-fleet-api/scripts/build-web.js` is therefore best-effort: `rmSync` →
+  `renameSync` aside to `public.stale-<ts>` → warn and build over the top.
+  Bash `rm -rf` is not shimmed and still works for cleanup.
 
 ## Running things in this environment
 

@@ -233,10 +233,13 @@ class BookingProvider extends ChangeNotifier {
     notifyListeners();
     try {
       final outcome = await _fleet.searchTrips(
-        sourceId: _origin!.id,
-        sourceName: _origin!.name,
-        destinationId: _destination!.id,
-        destinationName: _destination!.name,
+        // Send the location *Name* (e.g. "Abuja", "Jos"), not the GUID Id.
+        // The upstream resolves routes by name; the Id makes /trips/search
+        // answer "No route found for the selected locations" even though
+        // /trips/routes lists the same pair. Names are trimmed because the
+        // catalog returns some with trailing whitespace ("Jos ").
+        sourceName: _origin!.name.trim(),
+        destinationName: _destination!.name.trim(),
         date: travelDateIso,
         // Same reasoning as loadCatalog: /trips/search is a public
         // store-scoped endpoint and rejects a stray bearer token.

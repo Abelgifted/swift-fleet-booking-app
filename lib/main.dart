@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'config/api_config.dart';
 import 'config/premium_theme.dart';
 import 'providers/app_settings_provider.dart';
 import 'providers/auth_provider.dart';
@@ -32,6 +33,7 @@ import 'widgets/feedback.dart';
 void main() {
   runZonedGuarded(() {
     WidgetsFlutterBinding.ensureInitialized();
+    debugPrint('=== API BASE URL: ${ApiConfig.baseUrl} ===');
     ErrorHandler.init();
     runApp(const FleetBookingApp());
   }, (error, stack) {
